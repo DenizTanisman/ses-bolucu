@@ -2,7 +2,7 @@
 
 Ses ya da video dosyasını tarayıcıda böl, parçalara ad ver, ayrı ayrı indir. Dosya cihazından çıkmaz.
 
-**Kullan:** https://deniztanisman.github.io/ses-bolucu/
+**Kullan:** https://deniztanisman.github.io/media-splitter/
 
 ![Ses Bölücü](screenshot.png)
 
