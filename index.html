@@ -1,0 +1,1812 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>body{margin:0}</style>
+</head>
+<body>
+<title>Ses Bölücü</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.6/fix-webm-duration.js"></script>
+<style>
+/* Layout: one column "tape deck" — the waveform strip is the work surface,
+   transport under it, then a cue sheet of named parts. */
+:root {
+  --bg: #111417;
+  --panel: #191d22;
+  --panel-2: #20252b;
+  --line: #2c333b;
+  --fg: #e9edf0;
+  --muted: #8d98a3;
+  --wave: #56606b;
+  --accent: #f0b03f;      /* tape-deck amber */
+  --accent-ink: #1a1305;
+  --danger: #ff7a6b;
+  --p1: #f0b03f; --p2: #5cc8ff; --p3: #ff7aa8; --p4: #7be08a; --p5: #b49cff; --p6: #ff9a4d;
+  --display: "Bricolage Grotesque", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --video-bg: #000000;   /* letterbox behind the video in both themes */
+  --excluded: #2a2f36;   /* a part taken out of the file: grey block */
+  --on-part: #121417;    /* ▶ glyph on a part-coloured button */
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f2f4f5; --panel: #ffffff; --panel-2: #f6f7f8; --line: #d7dce1;
+    --fg: #14181c; --muted: #5b6570; --wave: #a3acb5;
+    --accent: #b4760f; --accent-ink: #ffffff; --danger: #c43c2c;
+    --p1: #b4760f; --p2: #0f7fb8; --p3: #c2336a; --p4: #2f8a40; --p5: #6a4fd1; --p6: #c25a10;
+    --excluded: #a9b1ba; --on-part: #ffffff;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f2f4f5; --panel: #ffffff; --panel-2: #f6f7f8; --line: #d7dce1;
+  --fg: #14181c; --muted: #5b6570; --wave: #a3acb5;
+  --accent: #b4760f; --accent-ink: #ffffff; --danger: #c43c2c;
+  --p1: #b4760f; --p2: #0f7fb8; --p3: #c2336a; --p4: #2f8a40; --p5: #6a4fd1; --p6: #c25a10;
+  --excluded: #a9b1ba; --on-part: #ffffff;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 var(--body);
+}
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 18px;
+}
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h1 {
+  margin: 0;
+  font: 800 clamp(28px, 6vw, 40px)/1 var(--display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+h1 .cut { color: var(--accent); }
+.sub { margin: 0; color: var(--muted); max-width: 60ch; }
+
+.deck {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+.filebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.filename { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 160px; color: var(--muted); }
+.filename b { color: var(--fg); font-weight: 600; }
+.badge {
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  max-height: 52vh;
+  border-radius: 10px;
+  background: var(--video-bg);
+}
+.wave-wrap {
+  position: relative;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.wave-wrap.drag { outline: 2px dashed var(--accent); outline-offset: -4px; }
+canvas#wave { display: block; width: 100%; height: 180px; touch-action: pan-y; cursor: crosshair; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.clock { font: 500 20px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.clock .of { color: var(--muted); font-size: 14px; }
+.spacer { flex: 1 1 auto; }
+
+button, .btn {
+  font: 600 14px/1 var(--body);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--fg);
+  padding: 10px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+button:hover, .btn:hover { border-color: var(--muted); }
+button:disabled { opacity: 0.5; cursor: default; }
+.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.primary:hover { filter: brightness(1.06); border-color: var(--accent); }
+button:focus-visible, .btn:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.icon { width: 38px; height: 38px; padding: 0; justify-content: center; font-size: 15px; }
+
+.cues { display: grid; gap: 12px; }
+.cues-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+h2 { margin: 0; font: 700 22px/1.1 var(--display); flex: 1 1 auto; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; padding: 9px 14px; color: var(--muted); }
+.seg button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+
+ol.parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.part {
+  display: grid;
+  /* Two rows so the times always have room (Mac half screen):
+     ▶ · name · actions, then start – end and the length underneath. */
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas: "num name actions" ". times times";
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--c);
+  border-radius: 10px;
+}
+.part .num {
+  grid-area: num;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--c);
+  border-color: var(--c);
+  color: var(--on-part);
+  font-size: 15px;
+}
+.part.off { border-left-color: var(--excluded); }
+.part.off .num { background: var(--excluded); border-color: var(--excluded); color: var(--fg); }
+.part.off .name input, .part.off .times { opacity: 0.55; }
+.part.off .name input { text-decoration: line-through; }
+.part .cut[aria-pressed="true"] { background: var(--excluded); border-color: var(--excluded); }
+.name { grid-area: name; min-width: 0; }
+.times { grid-area: times; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.tfield { display: inline-flex; align-items: center; gap: 6px; }
+.tlabel { color: var(--muted); font-size: 13px; }
+.actions { grid-area: actions; display: flex; gap: 6px; justify-content: flex-end; }
+.part input {
+  width: 100%;
+  min-width: 0;
+  font: 500 15px/1.2 var(--body);
+  color: var(--fg);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 9px;
+}
+.part input.t {
+  flex: none;
+  width: 8.2em;
+  font: 500 16px/1.2 var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.part input[aria-invalid="true"] { border-color: var(--danger); }
+.dash { color: var(--muted); }
+.len { color: var(--muted); font: 14px/1 var(--mono); white-space: nowrap; }
+.part .busy { color: var(--muted); font: 13px/1 var(--mono); }
+
+.empty {
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+}
+.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.note { margin: 0; color: var(--muted); font-size: 13px; flex: 1 1 260px; max-width: 70ch; }
+.toast { min-height: 1.5em; margin: 0; font-size: 14px; }
+.ask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding-block: 14px calc(14px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+}
+.ask-inner { max-width: 980px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.ask p { margin: 0; flex: 1 1 280px; max-width: 62ch; }
+.ask-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet { flex-direction: column; align-items: stretch; }
+.rec-note { margin: 0; color: var(--danger); font-weight: 600; }
+.wave-wrap.busy canvas { cursor: progress; opacity: 0.8; }
+.cont {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.cont p { margin: 0; flex: 1 1 260px; max-width: 62ch; }
+.ask-tools { display: flex; gap: 8px; }
+.ask-tools button { padding: 7px 12px; font-size: 13px; }
+ul.ask-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 40vh; overflow-y: auto; }
+ul.ask-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--c, var(--line));
+  border-radius: 8px;
+  background: var(--panel-2);
+  cursor: pointer;
+  min-width: 0;
+}
+ul.ask-list input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+ul.ask-list .aname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+ul.ask-list .len { margin-left: auto; }
+.sheet h3 { margin: 0; font: 700 20px/1.1 var(--display); }
+.sheet-note { margin: 0; color: var(--muted); max-width: 70ch; }
+ol.order { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 40vh; overflow-y: auto; }
+ol.order li {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--c);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+ol.order .oname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+ol.order .icon { width: 34px; height: 34px; }
+.sheet-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.field { color: var(--muted); font-size: 13px; }
+#combineName {
+  flex: 1 1 220px;
+  min-width: 0;
+  font: 500 15px/1.2 var(--body);
+  color: var(--fg);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 9px;
+}
+@media (max-width: 640px) {
+  ol.order li { grid-template-columns: 26px minmax(0, 1fr) auto auto; }
+  ol.order .len { display: none; }
+}
+.toast.err { color: var(--danger); }
+
+@media (max-width: 560px) {
+  .part {
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-areas: "num name" "times times" "actions actions";
+  }
+  .actions { justify-content: flex-start; }
+  .tlabel { width: 5.4em; }
+  canvas#wave { height: 150px; }
+}
+</style>
+
+<div class="page">
+  <header class="top">
+    <h1>Ses <span class="cut">Bölücü</span></h1>
+    <p class="sub">Sesi ya da videoyu yükle, istediğin aralıkları seç, her parçaya ad ver ve ayrı ayrı indir. Dosya cihazından çıkmaz.</p>
+  </header>
+
+  <section class="deck" aria-label="Ses">
+    <div class="filebar">
+      <label class="btn primary" for="file">Ses / video yükle</label>
+      <input id="file" type="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.webm,.mp4,.mov,.m4v,.mkv" hidden>
+      <span class="filename" id="fileName"><b>Örnek ses</b> · sentezlenmiş</span>
+      <span class="badge" id="sampleBadge">örnek</span>
+    </div>
+    <video id="video" class="preview" playsinline preload="auto" hidden></video>
+    <div class="wave-wrap" id="drop">
+      <canvas id="wave" aria-label="Ses dalgası. Sürükleyerek parça seç."></canvas>
+    </div>
+    <p class="hint">Bir parçayı "Çıkar" ile kapatırsan çalarken o kısım atlanır. Dokun: imleç oraya gider. İmleci ya da üstteki zaman cetvelini tutup kaydır. Basılı tutup sürükle: yeni parça. Parçanın kenarını sürükle: aralığı ayarla; bırakınca başlangıçtan 5 sn ya da bitişin son 5 sn'si çalar. Çalma, içinde bulunduğun parçanın sonunda durur; Çal'a tekrar basınca devam eder. Dosyayı buraya bırakabilirsin.</p>
+    <div class="transport">
+      <button id="play" class="primary" type="button" aria-label="Çal">▶ Çal</button>
+      <span class="clock"><span id="pos">0:00.0</span> <span class="of">/ <span id="total">0:00.0</span></span></span>
+      <span class="spacer"></span>
+      <button id="undo" type="button" disabled aria-label="Geri al (Cmd/Ctrl+Z)">↶ Geri al</button>
+      <button id="addPart" type="button">+ Parça ekle</button>
+    </div>
+    <p class="rec-note" id="recNote" role="status" hidden>● Video kaydediliyor… Bitene kadar bu sekmeyi önde tut; dalga ve çalma düğmeleri kilitli.</p>
+    <div class="cont" id="cont" role="status" hidden>
+      <p id="contText"></p>
+      <div class="ask-btns">
+        <button type="button" id="contGo" class="primary">Devam et, sonu uzat</button>
+        <button type="button" id="contStay">Burada bitsin</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="cues" aria-label="Parçalar">
+    <div class="cues-head">
+      <h2>Parçalar</h2>
+      <div class="seg" role="radiogroup" aria-label="Dosya biçimi">
+        <button type="button" role="radio" aria-checked="false" data-fmt="video" hidden>Video</button>
+        <button type="button" role="radio" aria-checked="true" data-fmt="mp3">MP3</button>
+        <button type="button" role="radio" aria-checked="false" data-fmt="wav">WAV</button>
+      </div>
+    </div>
+    <ol class="parts" id="parts"></ol>
+    <div class="foot">
+      <button id="dlAll" class="primary" type="button">Hepsini indir (.zip)</button>
+      <button id="joinBtn" type="button">Parçaları birleştir…</button>
+      <button id="cutBtn" type="button">Kesilmiş hâlini indir…</button>
+      <p class="note" id="dlNote">Zaman biçimi dakika.saniye: <span class="mono">1.23</span> = 1 dk 23 sn (<span class="mono">1:23.5</span> da olur). Her parça, içinde kendi adıyla bir MP3, WAV ya da video bulunan bir .zip olarak iner; bu sayfa dosyayı doğrudan kaydedemiyor. Video parçaları oynatılarak kaydedilir, bu yüzden parçanın süresi kadar sürer; kayıt bitene kadar bu sekmeyi önde tut.</p>
+    </div>
+    <p class="toast" id="toast" role="status" aria-live="polite"></p>
+  </section>
+
+  <div class="ask" id="combine" role="dialog" aria-labelledby="combineTitle" hidden>
+    <div class="ask-inner sheet">
+      <h3 id="combineTitle">Parçaları birleştir</h3>
+      <p class="sheet-note" id="combineNote"></p>
+      <ol class="order" id="combineList"></ol>
+      <div class="sheet-row">
+        <label class="field" for="combineName">Dosya adı</label>
+        <input id="combineName" type="text" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="ask-btns">
+        <button type="button" id="combineGo" class="primary">Birleştir ve indir</button>
+        <button type="button" id="combineCancel">Vazgeç</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ask" id="ask" role="dialog" aria-labelledby="askTitle" hidden>
+    <div class="ask-inner" id="askInner">
+      <p id="askTitle"></p>
+      <div class="ask-tools" id="askTools" hidden>
+        <button type="button" id="askAll">Tümünü seç</button>
+        <button type="button" id="askNone">Hiçbiri</button>
+      </div>
+      <ul class="ask-list" id="askList" hidden></ul>
+      <div class="ask-btns">
+        <button type="button" id="askYes" class="primary">Evet, metin de</button>
+        <button type="button" id="askNo">Hayır, sadece ses</button>
+        <button type="button" id="askCancel" class="icon" aria-label="Vazgeç">✕</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('wave'), cx = canvas.getContext('2d');
+  const PART_COLORS = ['--p1', '--p2', '--p3', '--p4', '--p5', '--p6'];
+
+  const state = {
+    buffer: null,
+    baseName: 'ornek-ses',
+    sample: true,
+    parts: [],
+    playhead: 0,
+    playing: null,     // { src, ctxStart, from, until, partId }
+    format: 'mp3',
+    busy: false,
+    nextId: 1,
+    colorIndex: 0
+  };
+  let audioCtx = null;
+  let peaks = null, peaksWidth = 0;
+  let drag = null;   // { kind: 'edge'|'pending'|'create', part, edge, t0, x0, t1 }
+  let hoverT = null; // mouse position on the wave, in seconds
+  const RULER_CSS = 22; // px: top strip = time ruler, drag there moves the playhead
+
+  // In claude.ai the page saves through the viewer's downloads capability;
+  // opened anywhere else (e.g. GitHub Pages) it is a plain browser download.
+  const plainDownloads = {
+    save: async ({ filename, data }) => {
+      const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return { status: 'saved' };
+    }
+  };
+  const downloadsPromise = (window.claude && window.claude.use)
+    ? window.claude.use('downloads').catch(() => null)
+    : Promise.resolve(plainDownloads);
+
+  // ---------- time ----------
+  function fmt(t) {
+    if (!isFinite(t)) t = 0;
+    const tenths = Math.round(t * 10);
+    const m = Math.floor(tenths / 600);
+    const s = (tenths - m * 600) / 10;
+    return m + ':' + s.toFixed(1).padStart(4, '0');
+  }
+  /** "1.23" → 83 s (dakika.saniye), "1:23.5" → 83.5, "45" → 45 s. */
+  function parseTime(raw) {
+    const s = String(raw).trim().replace(',', '.');
+    let m;
+    if ((m = s.match(/^(\d+):(\d{1,2})(?:\.(\d+))?$/))) {
+      const sec = Number(m[2]);
+      if (sec >= 60) return NaN;
+      return Number(m[1]) * 60 + sec + (m[3] ? Number('0.' + m[3]) : 0);
+    }
+    if ((m = s.match(/^(\d+)\.(\d{2})(?:\.(\d+))?$/))) {
+      const sec = Number(m[2]);
+      if (sec >= 60) return NaN;
+      return Number(m[1]) * 60 + sec + (m[3] ? Number('0.' + m[3]) : 0);
+    }
+    if (/^\d+(\.\d)?$/.test(s)) return Number(s);
+    return NaN;
+  }
+  const duration = () => (state.buffer ? state.buffer.duration : 0);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // ---------- sample (synthesized, so the tool opens with something real) ----------
+  function makeSample() {
+    const sr = 44100, secs = 45, n = sr * secs;
+    const buf = new AudioBuffer({ length: n, sampleRate: sr, numberOfChannels: 1 });
+    const d = buf.getChannelData(0);
+    const chord = [220, 277.18, 329.63];
+    const melody = [523.25, 587.33, 659.25, 783.99, 659.25, 587.33];
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      let v = 0;
+      if (t < 15) {                       // soft pad
+        const swell = Math.sin(Math.PI * (t % 5) / 5);
+        for (const f of chord) v += Math.sin(2 * Math.PI * f * t) * 0.18 * swell;
+      } else if (t < 30) {                // plucks, 2 per second
+        const k = (t - 15) % 0.5;
+        const f = chord[Math.floor((t - 15) * 2) % 3] * 2;
+        v = Math.sin(2 * Math.PI * f * t) * Math.exp(-k * 9) * 0.7;
+      } else {                            // melody over a low hum
+        const note = melody[Math.floor((t - 30) * 1.5) % melody.length];
+        const k = ((t - 30) * 1.5) % 1;
+        v = Math.sin(2 * Math.PI * note * t) * (0.5 - 0.35 * k) + Math.sin(2 * Math.PI * 110 * t) * 0.12;
+      }
+      d[i] = v * 0.8;
+    }
+    return buf;
+  }
+
+  // ---------- undo ----------
+  // Snapshots of the parts taken before each change; ↶ Geri al / Cmd+Z
+  // puts the last one back (a moved edge, a new or deleted part, a rename,
+  // a part taken out or put back).
+  const history = [];
+  const takeSnapshot = () => ({
+    parts: state.parts.map((p) => ({ ...p })),
+    colorIndex: state.colorIndex
+  });
+  function remember(snap) {
+    history.push(snap || takeSnapshot());
+    if (history.length > 200) history.shift();
+    updateUndo();
+  }
+  function undo() {
+    const snap = history.pop();
+    updateUndo();
+    if (!snap) return;
+    stop(true);
+    hideContinue();
+    state.parts = snap.parts;
+    state.colorIndex = snap.colorIndex;
+    renderParts();
+    updateTransport();
+    draw();
+    toast('Geri alındı.');
+  }
+  function updateUndo() {
+    const b = document.getElementById('undo');
+    if (b) b.disabled = history.length === 0;
+  }
+
+  // ---------- parts ----------
+  const activeParts = () => state.parts.filter((p) => !p.excluded);
+  function addPart(start, end, name, quiet) {
+    const dur = duration();
+    start = clamp(start, 0, dur);
+    end = clamp(end, 0, dur);
+    if (end - start < 0.1) return null;
+    if (!quiet) remember();
+    const p = {
+      id: state.nextId++,
+      name: name || ('parca-' + (state.parts.length + 1)),
+      start, end,
+      color: PART_COLORS[state.colorIndex++ % PART_COLORS.length]
+    };
+    state.parts.push(p);
+    renderParts();
+    draw();
+    return p;
+  }
+  function removePart(id) {
+    remember();
+    if (state.playing && state.playing.partId === id) stop();
+    state.parts = state.parts.filter((p) => p.id !== id);
+    renderParts();
+    draw();
+  }
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function renderParts() {
+    const list = $('parts');
+    list.textContent = '';
+    if (state.parts.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'Henüz parça yok. Dalga üzerinde sürükle ya da "+ Parça ekle"ye bas.';
+      list.appendChild(li);
+    }
+    state.parts.forEach((p, i) => {
+      const li = document.createElement('li');
+      li.className = 'part' + (p.excluded ? ' off' : '');
+      li.style.setProperty('--c', 'var(' + p.color + ')');
+      li.dataset.id = p.id;
+      li.innerHTML =
+        '<button type="button" class="num play">▶</button>' +
+        '<div class="name"><input type="text" aria-label="Parça adı" spellcheck="false" autocomplete="off"></div>' +
+        '<div class="times">' +
+          '<label class="tfield"><span class="tlabel">Başlangıç</span>' +
+          '<input class="t" type="text" inputmode="decimal" placeholder="1.23"></label>' +
+          '<label class="tfield"><span class="tlabel">Bitiş</span>' +
+          '<input class="t" type="text" inputmode="decimal" placeholder="2.34"></label>' +
+          '<span class="len"></span>' +
+        '</div>' +
+        '<div class="actions">' +
+          '<button type="button" class="cut"></button>' +
+          '<button type="button" class="dl">İndir</button>' +
+          '<button type="button" class="icon del" aria-label="Parçayı sil">✕</button>' +
+        '</div>';
+      const [nameIn, startIn, endIn] = li.querySelectorAll('input');
+      nameIn.id = 'name-' + p.id;
+      startIn.id = 'start-' + p.id;
+      endIn.id = 'end-' + p.id;
+      nameIn.value = p.name;
+      let nameSnap = null;
+      nameIn.addEventListener('focus', () => { nameSnap = takeSnapshot(); });
+      nameIn.addEventListener('input', () => { p.name = nameIn.value; draw(); });
+      nameIn.addEventListener('change', () => {
+        const before = nameSnap && nameSnap.parts.find((x) => x.id === p.id);
+        if (before && before.name !== p.name) remember(nameSnap);
+        nameSnap = takeSnapshot();
+      });
+      const commit = (input, edge) => {
+        const t = parseTime(input.value);
+        const ok = isFinite(t) && t >= 0 && t <= duration() + 0.05;
+        input.setAttribute('aria-invalid', ok ? 'false' : 'true');
+        if (!ok) return;
+        const snap = takeSnapshot(), was = [p.start, p.end];
+        const len = p.end - p.start;
+        const v = clamp(t, 0, duration());
+        // Typing a start past the end (or an end before the start) moves
+        // the other edge along, keeping the part's length.
+        if (edge === 'start') {
+          p.start = Math.min(v, duration() - 0.1);
+          if (p.end <= p.start + 0.05) p.end = Math.min(duration(), p.start + len);
+        } else {
+          p.end = Math.max(v, 0.1);
+          if (p.end <= p.start + 0.05) p.start = Math.max(0, p.end - len);
+        }
+        if (p.end - p.start < 0.1) p.end = Math.min(duration(), p.start + 0.1);
+        const changed = p.start !== was[0] || p.end !== was[1];
+        if (changed) remember(snap);
+        syncRow(p);
+        draw();
+        if (changed) previewEdge(p, edge);
+      };
+      startIn.addEventListener('change', () => commit(startIn, 'start'));
+      endIn.addEventListener('change', () => commit(endIn, 'end'));
+      for (const input of [startIn, endIn]) {
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+      }
+      li.querySelector('.play').addEventListener('click', () => {
+        if (state.playing && state.playing.partId === p.id) stop();
+        else play(p.start, p.end, p.id);
+      });
+      const cut = li.querySelector('.cut');
+      cut.textContent = p.excluded ? 'Geri koy' : 'Çıkar';
+      cut.setAttribute('aria-pressed', String(!!p.excluded));
+      cut.title = p.excluded ? 'Bu kısmı dosyaya geri koy' : 'Bu kısmı dosyadan çıkar: çalarken atlanır';
+      cut.addEventListener('click', () => {
+        remember();
+        p.excluded = !p.excluded;
+        renderParts();
+        draw();
+        toast(p.excluded ? '“' + (p.name || 'adsız') + '” çıkarıldı; çalarken atlanacak.' : '“' + (p.name || 'adsız') + '” geri kondu.');
+      });
+      li.querySelector('.dl').addEventListener('click', () => downloadParts([p], li.querySelector('.dl')));
+      li.querySelector('.del').addEventListener('click', () => removePart(p.id));
+      list.appendChild(li);
+      syncRow(p);
+    });
+    $('dlAll').disabled = activeParts().length === 0;
+  }
+  function syncRow(p) {
+    const s = $('start-' + p.id), e = $('end-' + p.id);
+    if (!s) return;
+    if (document.activeElement !== s) { s.value = fmt(p.start); s.setAttribute('aria-invalid', 'false'); }
+    if (document.activeElement !== e) { e.value = fmt(p.end); e.setAttribute('aria-invalid', 'false'); }
+    const len = s.closest('.times').querySelector('.len');
+    len.textContent = 'süre ' + fmt(p.end - p.start);
+    const btn = s.closest('.part').querySelector('.play');
+    const on = state.playing && state.playing.partId === p.id;
+    const n = state.parts.indexOf(p) + 1;
+    btn.textContent = on ? '■' : '▶';
+    btn.setAttribute('aria-label', on ? 'Durdur' : n + '. parçayı dinle');
+    btn.title = on ? 'Durdur' : n + '. parçayı dinle';
+  }
+
+  // ---------- waveform ----------
+  function computePeaks(width) {
+    const buf = state.buffer;
+    const chans = [];
+    for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) chans.push(buf.getChannelData(c));
+    const n = buf.length, per = n / width;
+    const out = new Float32Array(width * 2);
+    for (let x = 0; x < width; x++) {
+      const a = Math.floor(x * per), b = Math.min(n, Math.floor((x + 1) * per));
+      let lo = 0, hi = 0;
+      const step = Math.max(1, Math.floor((b - a) / 400));   // sample long columns sparsely
+      for (let i = a; i < b; i += step) {
+        let v = 0;
+        for (const ch of chans) v += ch[i];
+        v /= chans.length;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      out[x * 2] = lo;
+      out[x * 2 + 1] = hi;
+    }
+    return out;
+  }
+  function tickStep(dur, widthPx) {
+    for (const s of [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800]) {
+      if (widthPx / (dur / s) >= 64) return s;
+    }
+    return 3600;
+  }
+  const xOf = (t, W) => (duration() ? (t / duration()) * W : 0);
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+    const W = Math.max(1, Math.round(cssW * dpr)), H = Math.max(1, Math.round(cssH * dpr));
+    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+    cx.clearRect(0, 0, W, H);
+    if (!state.buffer) return;
+    if (!peaks || peaksWidth !== W) { peaks = computePeaks(W); peaksWidth = W; }
+
+    const ruler = RULER_CSS * dpr;
+    const top = ruler + 18 * dpr;          // room for part labels
+    const mid = top + (H - top - 6 * dpr) / 2;
+    const amp = (H - top - 10 * dpr) / 2;
+    const muted = cssVar('--muted'), wave = cssVar('--wave'), line = cssVar('--line');
+
+    // ruler
+    cx.fillStyle = muted;
+    cx.font = (11 * dpr) + 'px ' + cssVar('--mono');
+    cx.textBaseline = 'top';
+    const step = tickStep(duration(), cssW);
+    for (let t = 0; t <= duration() + 1e-6; t += step) {
+      const x = Math.round(xOf(t, W)) + 0.5;
+      cx.fillRect(x, 0, 1, 6 * dpr);
+      const label = step < 1 ? fmt(t) : fmt(t).replace(/\.0$/, '');
+      if (x + 40 * dpr < W) cx.fillText(label, x + 3 * dpr, 6 * dpr);
+    }
+    cx.fillStyle = line;
+    cx.fillRect(0, ruler, W, 1);
+
+    // parts (behind the wave)
+    for (const p of state.parts) {
+      const color = cssVar(p.color);
+      const x0 = xOf(p.start, W), x1 = xOf(p.end, W);
+      cx.globalAlpha = 0.18;
+      cx.fillStyle = color;
+      cx.fillRect(x0, ruler + 1, Math.max(1, x1 - x0), H - ruler - 1);
+      cx.globalAlpha = 1;
+      cx.fillRect(x0, ruler + 1, 2 * dpr, H - ruler - 1);
+      cx.fillRect(x1 - 2 * dpr, ruler + 1, 2 * dpr, H - ruler - 1);
+      cx.font = '600 ' + (12 * dpr) + 'px ' + cssVar('--body');
+      const label = (p.name || '').trim() || 'adsız';
+      const room = x1 - x0 - 10 * dpr;
+      if (room > 14 * dpr) {
+        cx.save();
+        cx.beginPath();
+        cx.rect(x0, ruler, x1 - x0, 18 * dpr);
+        cx.clip();
+        cx.fillText(label, x0 + 6 * dpr, ruler + 3 * dpr);
+        cx.restore();
+      }
+    }
+
+    // wave
+    for (let x = 0; x < W; x++) {
+      const t = (x / W) * duration();
+      let color = wave;
+      for (const p of state.parts) if (!p.excluded && t >= p.start && t <= p.end) color = cssVar(p.color);
+      cx.fillStyle = color;
+      const lo = peaks[x * 2], hi = peaks[x * 2 + 1];
+      const y0 = mid - hi * amp, y1 = mid - lo * amp;
+      cx.fillRect(x, y0, 1, Math.max(1, y1 - y0));
+    }
+
+    // parts taken out: a grey block over the wave
+    const excludedFill = cssVar('--excluded');
+    for (const p of state.parts) {
+      if (!p.excluded) continue;
+      const x0 = xOf(p.start, W), x1 = xOf(p.end, W);
+      cx.globalAlpha = 0.9;
+      cx.fillStyle = excludedFill;
+      cx.fillRect(x0, ruler + 1, Math.max(1, x1 - x0), H - ruler - 1);
+      cx.globalAlpha = 1;
+      if (x1 - x0 > 40 * dpr) {
+        cx.save();
+        cx.beginPath();
+        cx.rect(x0, ruler, x1 - x0, H - ruler);
+        cx.clip();
+        cx.fillStyle = muted;
+        cx.font = '600 ' + (12 * dpr) + 'px ' + cssVar('--body');
+        cx.textBaseline = 'middle';
+        cx.fillText('çıkarıldı', x0 + 6 * dpr, mid);
+        cx.textBaseline = 'top';
+        cx.restore();
+      }
+    }
+
+    // selection being dragged
+    if (drag && drag.kind === 'create') {
+      const a = Math.min(drag.t0, drag.t1), b = Math.max(drag.t0, drag.t1);
+      cx.globalAlpha = 0.25;
+      cx.fillStyle = cssVar('--fg');
+      cx.fillRect(xOf(a, W), ruler + 1, xOf(b, W) - xOf(a, W), H - ruler - 1);
+      cx.globalAlpha = 1;
+    }
+
+    // playhead, with a grab handle in the ruler
+    const hx = Math.round(xOf(state.playhead, W));
+    cx.fillStyle = cssVar('--accent');
+    cx.fillRect(hx - dpr, 0, 2 * dpr, H);
+    cx.beginPath();
+    cx.moveTo(hx - 7 * dpr, 0);
+    cx.lineTo(hx + 7 * dpr, 0);
+    cx.lineTo(hx, 11 * dpr);
+    cx.closePath();
+    cx.fill();
+
+    // time readout under the pointer: edge being dragged, range being
+    // drawn, or (mouse) just hovering
+    let at = null, text = null;
+    if (drag && drag.kind === 'scrub') {
+      at = state.playhead;
+      text = fmt(at);
+    } else if (drag && drag.kind === 'edge') {
+      at = drag.part[drag.edge];
+      text = (drag.edge === 'start' ? 'başlangıç ' : 'bitiş ') + fmt(at);
+    } else if (drag && drag.kind === 'create') {
+      const a = Math.min(drag.t0, drag.t1), b = Math.max(drag.t0, drag.t1);
+      at = drag.t1;
+      text = fmt(a) + ' – ' + fmt(b) + '  (' + fmt(b - a) + ')';
+    } else if (hoverT != null) {
+      at = hoverT;
+      text = fmt(hoverT);
+    }
+    if (text) {
+      const x = Math.round(xOf(at, W));
+      cx.globalAlpha = 0.6;
+      cx.fillStyle = cssVar('--fg');
+      cx.fillRect(x, ruler + 1, dpr, H - ruler - 1);
+      cx.globalAlpha = 1;
+      cx.font = '500 ' + (13 * dpr) + 'px ' + cssVar('--mono');
+      const tw = cx.measureText(text).width, pad = 7 * dpr, bh = 22 * dpr;
+      const bx = clamp(x - tw / 2 - pad, 2 * dpr, W - tw - 2 * pad - 2 * dpr);
+      const by = H - bh - 6 * dpr;
+      cx.fillStyle = cssVar('--fg');
+      cx.beginPath();
+      if (cx.roundRect) cx.roundRect(bx, by, tw + 2 * pad, bh, 5 * dpr);
+      else cx.rect(bx, by, tw + 2 * pad, bh);
+      cx.fill();
+      cx.fillStyle = cssVar('--bg');
+      cx.textBaseline = 'middle';
+      cx.fillText(text, bx + pad, by + bh / 2 + dpr);
+      cx.textBaseline = 'top';
+    }
+  }
+
+  // ---------- pointer ----------
+  function timeAt(e) {
+    const r = canvas.getBoundingClientRect();
+    return clamp(((e.clientX - r.left) / r.width) * duration(), 0, duration());
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!state.buffer || state.recording) return;
+    const r = canvas.getBoundingClientRect();
+    const px = e.clientX - r.left;
+    const grab = e.pointerType === 'touch' ? 14 : 8;
+    let best = null;
+    for (const p of state.parts) {
+      for (const edge of ['start', 'end']) {
+        const ex = (p[edge] / duration()) * r.width;
+        const dist = Math.abs(ex - px);
+        if (dist <= grab && (!best || dist < best.dist)) best = { p, edge, dist };
+      }
+    }
+    // The ruler strip, or the playhead itself, moves the playhead (scrub).
+    const py = e.clientY - r.top;
+    const headDist = Math.abs((state.playhead / duration()) * r.width - px);
+    // A part edge under the pointer wins over the playhead (after an edge
+    // preview the playhead sits right on that edge); the ruler always scrubs.
+    if (py <= RULER_CSS || (headDist <= grab && !best)) {
+      const wasPlaying = !!state.playing;
+      stop(true);
+      drag = { kind: 'scrub', wasPlaying };
+      state.playhead = timeAt(e);
+      canvas.style.cursor = 'grabbing';
+      updateTransport();
+      scrubTo(state.playhead);
+      draw();
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    drag = best
+      ? { kind: 'edgePending', part: best.p, edge: best.edge, t0: timeAt(e), x0: e.clientX }
+      : { kind: 'pending', t0: timeAt(e), x0: e.clientX };
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) {
+      if (!state.buffer || e.pointerType !== 'mouse') return;
+      const r = canvas.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      const near = state.parts.some((p) =>
+        Math.abs((p.start / duration()) * r.width - px) <= 8 || Math.abs((p.end / duration()) * r.width - px) <= 8);
+      const onHead = e.clientY - r.top <= RULER_CSS ||
+        Math.abs((state.playhead / duration()) * r.width - px) <= 8;
+      canvas.style.cursor = onHead ? 'grab' : near ? 'ew-resize' : 'crosshair';
+      hoverT = timeAt(e);
+      draw();
+      return;
+    }
+    const t = timeAt(e);
+    if (drag.kind === 'edgePending' && Math.abs(e.clientX - drag.x0) > 4) {
+      remember();
+      drag.kind = 'edge';
+    }
+    if (drag.kind === 'scrub') {
+      // The scene (video) or the sound (audio) follows the playhead.
+      scrubTo(t);
+      draw();
+    } else if (drag.kind === 'edge') {
+      const p = drag.part;
+      if (drag.edge === 'start') p.start = clamp(t, 0, p.end - 0.1);
+      else p.end = clamp(t, p.start + 0.1, duration());
+      syncRow(p);
+      scrubTo(p[drag.edge]);
+      draw();
+    } else if (drag.kind === 'pending' && Math.abs(e.clientX - drag.x0) > 6) {
+      drag.kind = 'create';
+      drag.t1 = t;
+      draw();
+    } else if (drag.kind === 'create') {
+      drag.t1 = t;
+      draw();
+    }
+  });
+  function endDrag(e, cancelled) {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    if (d.kind === 'create' && !cancelled) {
+      const a = Math.min(d.t0, d.t1), b = Math.max(d.t0, d.t1);
+      if (b - a >= 0.3) {
+        clearSampleFlag();
+        addPart(a, b);
+      } else draw();
+    } else if ((d.kind === 'pending' || d.kind === 'edgePending') && !cancelled) {
+      seek(d.t0);
+    } else if (d.kind === 'edge' && !cancelled) {
+      previewEdge(d.part, d.edge);
+    } else if (d.kind === 'scrub') {
+      canvas.style.cursor = 'grab';
+      if (d.wasPlaying) play(state.playhead);
+      else { updateTransport(); draw(); }
+    } else {
+      draw();
+    }
+  }
+  canvas.addEventListener('pointerleave', () => { hoverT = null; if (!drag) draw(); });
+  canvas.addEventListener('pointerup', (e) => endDrag(e, false));
+  canvas.addEventListener('pointercancel', (e) => endDrag(e, true));
+
+  // ---------- playback ----------
+  // An <audio> element plays the file itself: unlike Web Audio it is not
+  // muted by a phone's silent switch and starts reliably from a tap inside
+  // the embedded page. The decoded buffer is only used for the wave and cuts.
+  // For a video file the visible <video> preview is the player instead.
+  const audioEl = new Audio();
+  audioEl.preload = 'auto';
+  const videoEl = $('video');
+  let player = audioEl;
+  let playerUrl = null;
+  function setPlayerSource(blob, isVideo) {
+    if (playerUrl) URL.revokeObjectURL(playerUrl);
+    player.pause();
+    const idle = isVideo ? audioEl : videoEl;
+    idle.removeAttribute('src');
+    idle.load();
+    player = isVideo ? videoEl : audioEl;
+    videoEl.hidden = !isVideo;
+    playerUrl = URL.createObjectURL(blob);
+    player.src = playerUrl;
+    player.load();
+  }
+  for (const el of [audioEl, videoEl]) {
+    el.addEventListener('ended', () => {
+      if (!state.playing || el !== player) return;
+      const extend = state.playing.extend;
+      state.playing = null;
+      if (extend) finishExtend(extend, duration());
+      state.playhead = 0;
+      updateTransport();
+      draw();
+    });
+  }
+  const metadataOf = (el) => (el.readyState >= 1
+    ? Promise.resolve()
+    : new Promise((res, rej) => {
+        el.addEventListener('loadedmetadata', res, { once: true });
+        el.addEventListener('error', () => rej(el.error), { once: true });
+      }));
+  /**
+   * While an edge is dragged: show the frame under it (video) or let a
+   * short grain of sound under it be heard (audio). Throttled.
+   */
+  let scrubTimer = 0, lastScrub = 0, settleTimer = 0;
+  function scrubTo(t) {
+    if (player.readyState < 1 || state.recording) return;
+    if (state.playing) stop(true);
+    state.playhead = t;
+    $('pos').textContent = fmt(t);
+    // Once the pointer rests, land exactly on t (fastSeek stops at keyframes).
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { if (!state.playing) player.currentTime = t; }, 150);
+    const now = performance.now();
+    if (now - lastScrub < 90) return;
+    lastScrub = now;
+    if (state.isVideo && player.fastSeek) player.fastSeek(t);
+    else player.currentTime = t;
+    if (!state.isVideo) {
+      clearTimeout(scrubTimer);
+      Promise.resolve(player.play()).catch(() => {});
+      scrubTimer = setTimeout(() => { if (!state.playing) player.pause(); }, 140);
+    }
+  }
+  /**
+   * After an edge is set: a start plays its first 5 s; an end goes back 5 s
+   * and plays up to it, stopping right there — to hear how the part ends.
+   */
+  function previewEdge(p, edge) {
+    if (edge === 'start') play(p.start, Math.min(p.end, p.start + 5), p.id);
+    else play(Math.max(p.start, p.end - 5), p.end, p.id);
+  }
+
+  /** The taken-out range covering [t], if any. */
+  function excludedAt(t) {
+    for (const r of mergedRanges(state.parts.filter((p) => p.excluded))) {
+      if (t >= r.start - 0.01 && t < r.end) return r;
+    }
+    return null;
+  }
+  /**
+   * [extendId]: keep playing and let that part's end follow the playhead
+   * until playback stops (the "Devam et, sonu uzat" answer).
+   */
+  function play(from, until, partId, extendId) {
+    if (!state.buffer || state.recording) return;
+    clearTimeout(scrubTimer);
+    clearTimeout(settleTimer);
+    hideContinue();
+    stop(true);
+    from = clamp(from, 0, duration());
+    if (from >= duration() - 0.05) from = 0;
+    if (!partId && !extendId) {
+      // Starting inside a taken-out part: begin right after it.
+      const ex = excludedAt(from);
+      if (ex) from = ex.end >= duration() - 0.05 ? 0 : ex.end;
+    }
+    // Whole-track play stops at the end of the part it is in (or the next
+    // one it enters), so a cut's end can be checked by ear; Çal again goes on.
+    let end = until == null ? duration() : until;
+    let stopPart = null;   // the part whose end this playback stops at
+    if (until == null && !extendId) {
+      for (const p of activeParts()) {
+        if (p.end > from + 0.05 && p.end < end) { end = p.end; stopPart = p.id; }
+      }
+    } else if (partId) {
+      const p = partById(partId);
+      if (p && Math.abs(p.end - end) < 0.001) stopPart = p.id;
+    }
+    const token = {};
+    state.playing = { token, from, until: end, partId: partId || null, stopPart, extend: extendId || null };
+    if (player.readyState >= 1) player.currentTime = from;
+    else player.addEventListener('loadedmetadata', () => { player.currentTime = from; }, { once: true });
+    updateTransport();
+    // play() is called right in the tap so the browser lets the sound start.
+    const started = player.play();
+    Promise.resolve(started).then(() => {
+      if (!state.playing || state.playing.token !== token) return;
+      requestAnimationFrame(tick);
+    }).catch((err) => {
+      // AbortError = a newer tap (pause, seek) interrupted this start: not a failure.
+      if (err && err.name === 'AbortError') return;
+      if (state.playing && state.playing.token === token) state.playing = null;
+      updateTransport();
+      draw();
+      toast('Ses çalınamadı' + (err && err.name ? ' (' + err.name + ')' : '') +
+        '. Cihazın sesinin açık olduğundan emin olup tekrar dene.', true);
+    });
+  }
+  function stop(silent) {
+    if (state.playing) {
+      const extend = state.playing.extend;
+      state.playing = null;
+      player.pause();
+      state.playhead = clamp(player.currentTime, 0, duration());
+      if (extend) finishExtend(extend, state.playhead);
+    }
+    if (!silent) { updateTransport(); draw(); }
+  }
+  /** Extension over: the part ends where playback stopped. */
+  function finishExtend(id, t) {
+    const p = partById(id);
+    if (!p) return;
+    p.end = clamp(t, p.start + 0.1, duration());
+    syncRow(p);
+    draw();
+    toast('“' + ((p.name || '').trim() || 'adsız') + '” artık ' + fmt(p.end) + '’de bitiyor. Geri al ile eski hâline dönebilirsin.');
+  }
+
+  // "Devam edeyim mi?" — shown when playback stops at a part's end.
+  let contId = null;
+  function showContinue(id) {
+    const p = partById(id);
+    if (!p) return;
+    contId = id;
+    $('contText').textContent = '“' + ((p.name || '').trim() || 'adsız') + '” burada bitiyor (' + fmt(p.end) +
+      '). Devam edeyim mi? Devam ettikçe parçanın sonu da ilerler; durdurduğun yerde biter.';
+    $('cont').hidden = false;
+  }
+  function hideContinue() {
+    contId = null;
+    const box = document.getElementById('cont');
+    if (box) box.hidden = true;
+  }
+  /** Moves the playhead; if anything was playing, play on from there. */
+  function seek(t) {
+    const wasPlaying = !!state.playing;
+    stop(true);
+    state.playhead = t;
+    if (wasPlaying) play(t);
+    else { updateTransport(); draw(); }
+  }
+  function tick() {
+    const p = state.playing;
+    if (!p) return;
+    let t = player.currentTime;
+    if (p.extend) {
+      // "Devam et": the part's end rides along with the playhead.
+      const part = partById(p.extend);
+      if (part) {
+        part.end = clamp(t, part.start + 0.1, duration());
+        syncRow(part);
+      }
+    } else if (!p.partId) {
+      // Reached a taken-out part: jump straight to what comes after it.
+      const ex = excludedAt(t);
+      if (ex) {
+        t = Math.min(ex.end, p.until);
+        if (t < p.until - 0.02) player.currentTime = t;
+      }
+    }
+    if (t >= p.until - 0.02) {
+      player.pause();
+      state.playing = null;
+      if (p.extend) finishExtend(p.extend, p.until);
+      state.playhead = p.until >= duration() - 0.05 && !p.stopPart ? 0 : p.until;
+      updateTransport();
+      draw();
+      if (p.stopPart) showContinue(p.stopPart);
+      return;
+    }
+    state.playhead = clamp(t, 0, duration());
+    $('pos').textContent = fmt(state.playhead);
+    draw();
+    requestAnimationFrame(tick);
+  }
+  function updateTransport() {
+    const whole = state.playing && !state.playing.partId;
+    const extending = whole && state.playing.extend;
+    $('play').textContent = extending ? '❚❚ Burada bitir' : whole ? '❚❚ Duraklat' : '▶ Çal';
+    $('play').setAttribute('aria-label', extending ? 'Burada bitir' : whole ? 'Duraklat' : 'Çal');
+    $('pos').textContent = fmt(state.playhead);
+    $('total').textContent = fmt(duration());
+    for (const p of state.parts) syncRow(p);
+  }
+  $('play').addEventListener('click', () => {
+    if (state.playing && !state.playing.partId) stop();
+    else play(state.playhead);
+  });
+  $('undo').addEventListener('click', undo);
+  $('contGo').addEventListener('click', () => {
+    const p = partById(contId);
+    hideContinue();
+    if (!p) return;
+    remember();
+    play(p.end, null, null, p.id);
+  });
+  $('contStay').addEventListener('click', hideContinue);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && contId != null) hideContinue(); });
+  document.addEventListener('keydown', (e) => {
+    const typing = /^(INPUT|TEXTAREA)$/.test((e.target && e.target.tagName) || '');
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !typing) {
+      e.preventDefault();
+      undo();
+    }
+  });
+  $('addPart').addEventListener('click', () => {
+    if (!state.buffer) return;
+    clearSampleFlag();
+    let a = state.playhead, b = Math.min(duration(), a + 10);
+    if (b - a < 1) { a = Math.max(0, duration() - 10); b = duration(); }
+    const p = addPart(a, b);
+    if (p) { const el = $('name-' + p.id); if (el) { el.focus(); el.select(); } }
+  });
+
+  // ---------- loading ----------
+  function clearSampleFlag() {
+    if (!state.sample) return;
+    state.sample = false;
+  }
+  async function loadFile(file) {
+    if (!file) return;
+    toast('“' + file.name + '” açılıyor…');
+    try {
+      const isVideo = (file.type || '').startsWith('video/') ||
+        (!file.type && /\.(mp4|mov|m4v|mkv)$/i.test(file.name));
+      stop(true);
+      setPlayerSource(file, isVideo);
+      const bytes = await file.arrayBuffer();
+      const c = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx = c;
+      let buf;
+      try {
+        buf = await c.decodeAudioData(bytes);
+      } catch (err) {
+        if (!isVideo) throw err;
+        // A video without a readable sound track: a silent wave of its length.
+        await metadataOf(videoEl);
+        const secs = isFinite(videoEl.duration) ? videoEl.duration : 0;
+        if (!secs) throw err;
+        buf = new AudioBuffer({ length: Math.ceil(secs * 8000), sampleRate: 8000, numberOfChannels: 1 });
+      }
+      state.buffer = buf;
+      state.isVideo = isVideo;
+      setFormatChoices(isVideo);
+      state.sample = false;
+      state.parts = [];
+      state.colorIndex = 0;
+      state.playhead = 0;
+      history.length = 0;
+      updateUndo();
+      hideContinue();
+      state.baseName = safeName(file.name.replace(/\.[^.]+$/, '')) || 'ses';
+      peaks = null;
+      $('fileName').innerHTML = '';
+      const b = document.createElement('b');
+      b.textContent = file.name;
+      $('fileName').appendChild(b);
+      $('fileName').append(' · ' + fmt(buf.duration).replace(/\.\d$/, '') + ' · ' +
+        (isVideo ? 'video' : buf.numberOfChannels > 1 ? 'stereo' : 'mono'));
+      $('sampleBadge').hidden = true;
+      renderParts();
+      updateTransport();
+      draw();
+      toast('Yüklendi. Dalga üzerinde sürükleyerek ilk parçayı seç.');
+    } catch (err) {
+      toast('Bu dosya okunamadı. Ses için MP3, WAV, M4A, OGG, FLAC; video için MP4, WEBM ya da MOV dene.', true);
+    }
+  }
+  $('file').addEventListener('change', (e) => { loadFile(e.target.files[0]); e.target.value = ''; });
+  const drop = $('drop');
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('drag');
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  // ---------- encoding ----------
+  function safeName(n) {
+    return String(n || '').trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\s+/g, ' ').slice(0, 80);
+  }
+  function sliceChannels(p) {
+    const buf = state.buffer, sr = buf.sampleRate;
+    const a = Math.floor(p.start * sr), b = Math.min(buf.length, Math.ceil(p.end * sr));
+    const out = [];
+    for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) out.push(buf.getChannelData(c).subarray(a, b));
+    return { chans: out, sr };
+  }
+  function toInt16(f32) {
+    const out = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return out;
+  }
+  const yieldUI = () => new Promise((r) => setTimeout(r, 0));
+
+  /** { chans, sr } → MP3 Blob (192 kbps). */
+  async function encodeMp3(audio, onProgress) {
+    const { chans, sr } = audio;
+    const enc = new lamejs.Mp3Encoder(chans.length, sr, 192);
+    const l = toInt16(chans[0]), r = chans[1] ? toInt16(chans[1]) : null;
+    const parts = [];
+    const block = 1152;
+    for (let i = 0, n = 0; i < l.length; i += block, n++) {
+      const out = r ? enc.encodeBuffer(l.subarray(i, i + block), r.subarray(i, i + block))
+                    : enc.encodeBuffer(l.subarray(i, i + block));
+      if (out.length) parts.push(new Uint8Array(out));
+      if (n % 300 === 0) { onProgress(i / l.length); await yieldUI(); }
+    }
+    const tail = enc.flush();
+    if (tail.length) parts.push(new Uint8Array(tail));
+    return new Blob(parts, { type: 'audio/mpeg' });
+  }
+  /** { chans, sr } → 16-bit PCM WAV Blob. */
+  function encodeWav(audio) {
+    const { chans, sr } = audio;
+    const nch = chans.length, len = chans[0].length;
+    const buf = new ArrayBuffer(44 + len * nch * 2), v = new DataView(buf);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + len * nch * 2, true); w(8, 'WAVE');
+    w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, nch, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * nch * 2, true); v.setUint16(32, nch * 2, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, len * nch * 2, true);
+    let o = 44;
+    for (let i = 0; i < len; i++) {
+      for (let c = 0; c < nch; c++) {
+        const s = Math.max(-1, Math.min(1, chans[c][i]));
+        v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        o += 2;
+      }
+    }
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+
+  // ---------- join / cut out ----------
+  /** Parts as time ranges, overlaps merged, in time order. */
+  function mergedRanges(parts) {
+    const sorted = parts.map((p) => ({ start: p.start, end: p.end })).sort((a, b) => a.start - b.start);
+    const out = [];
+    for (const r of sorted) {
+      const last = out[out.length - 1];
+      if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
+      else out.push({ ...r });
+    }
+    return out;
+  }
+  /** What is left of the whole file once the parts marked "Çıkar" are out. */
+  function keptRanges() {
+    const out = [];
+    let at = 0;
+    for (const r of mergedRanges(state.parts.filter((p) => p.excluded))) {
+      if (r.start - at > 0.05) out.push({ start: at, end: r.start });
+      at = Math.max(at, r.end);
+    }
+    if (duration() - at > 0.05) out.push({ start: at, end: duration() });
+    return out;
+  }
+  const rangesLength = (ranges) => ranges.reduce((a, r) => a + (r.end - r.start), 0);
+  /**
+   * The ranges' samples back to back → { chans, sr }. A 5 ms fade at each
+   * join keeps the seams from clicking.
+   */
+  function joinChannels(ranges) {
+    const buf = state.buffer, sr = buf.sampleRate, nch = Math.min(2, buf.numberOfChannels);
+    const spans = ranges.map((r) => {
+      const a = Math.floor(r.start * sr);
+      return { a, n: Math.max(0, Math.min(buf.length, Math.ceil(r.end * sr)) - a) };
+    });
+    const total = spans.reduce((s, x) => s + x.n, 0);
+    const chans = [];
+    for (let c = 0; c < nch; c++) chans.push(new Float32Array(total));
+    const fade = Math.floor(sr * 0.005);
+    let o = 0;
+    spans.forEach(({ a, n }, k) => {
+      for (let c = 0; c < nch; c++) {
+        const out = chans[c];
+        out.set(buf.getChannelData(c).subarray(a, a + n), o);
+        for (let i = 0; i < Math.min(fade, n / 2); i++) {
+          const g = i / fade;
+          if (k > 0) out[o + i] *= g;
+          if (k < spans.length - 1) out[o + n - 1 - i] *= g;
+        }
+      }
+      o += n;
+    });
+    return { chans, sr };
+  }
+
+  /**
+   * Video cut: plays each range in the preview and records it (MediaRecorder),
+   * pausing the recorder while seeking between ranges, so the ranges come out
+   * back to back in one file. Takes as long as the ranges. → { blob, ext }.
+   */
+  async function recordVideoSegments(ranges, onProgress) {
+    const capture = videoEl.captureStream || videoEl.mozCaptureStream;
+    if (!capture || typeof MediaRecorder === 'undefined') {
+      throw { code: 'no_video_cut' };
+    }
+    const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+      .find((m) => MediaRecorder.isTypeSupported(m));
+    if (!mime) throw { code: 'no_video_cut' };
+    stop(true);
+    await metadataOf(videoEl);
+    setRecording(true);
+    try {
+      return await recordRanges(ranges, onProgress, capture, mime);
+    } finally {
+      setRecording(false);
+    }
+  }
+  /**
+   * While a video cut is being recorded nothing else may move the preview
+   * (a tap, a scrub, Çal): that would pause it and stall the recording.
+   */
+  function setRecording(on) {
+    state.recording = on;
+    $('drop').classList.toggle('busy', on);
+    for (const id of ['play', 'addPart', 'undo']) $(id).disabled = on || (id === 'undo' && history.length === 0);
+    document.querySelectorAll('.part .play, .part .cut, .part .del').forEach((b) => { b.disabled = on; });
+    $('recNote').hidden = !on;
+  }
+  async function recordRanges(ranges, onProgress, capture, mime) {
+    const stream = capture.call(videoEl);
+    const chunks = [];
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const stopped = new Promise((res) => { rec.onstop = res; });
+    rec.start(250);
+    rec.pause();
+    const total = rangesLength(ranges);
+    let done = 0, recordedMs = 0;
+    for (const r of ranges) {
+      // Seek (with a fallback in case no 'seeked' comes), then record only
+      // while the video really plays, up to the first frame at the end.
+      await new Promise((res) => {
+        const t = setTimeout(res, 2000);
+        videoEl.addEventListener('seeked', () => { clearTimeout(t); res(); }, { once: true });
+        videoEl.currentTime = r.start;
+      });
+      let began = 0;
+      videoEl.addEventListener('playing', () => { began = performance.now(); rec.resume(); }, { once: true });
+      await videoEl.play();
+      // The video track can be a little shorter than the sound: never wait
+      // past its real end.
+      const until = isFinite(videoEl.duration) ? Math.min(r.end, videoEl.duration - 0.05) : r.end;
+      await new Promise((res, rej) => {
+        let finished = false, lastT = -1, lastMove = performance.now(), kicked = false;
+        const finish = (fn) => { if (!finished) { finished = true; clearInterval(poll); fn(); } };
+        const check = (t) => {
+          if (finished) return true;
+          state.playhead = t;
+          draw();
+          onProgress(clamp((done + t - r.start) / total, 0, 1));
+          if (t >= until - 0.01 || videoEl.ended) { finish(res); return true; }
+          return false;
+        };
+        // Frame callbacks are exact but stop for hidden/off-screen video;
+        // the poll keeps going and watches for a stall.
+        const poll = setInterval(() => {
+          const t = videoEl.currentTime;
+          if (check(t)) return;
+          if (t > lastT + 0.001) { lastT = t; lastMove = performance.now(); kicked = false; return; }
+          const still = performance.now() - lastMove;
+          if (still > 4000 && !kicked) { kicked = true; Promise.resolve(videoEl.play()).catch(() => {}); }
+          if (still > 10000) finish(() => rej({ code: 'stalled', at: t }));
+        }, 100);
+        if (videoEl.requestVideoFrameCallback) {
+          const frame = (_, meta) => { if (!check(meta.mediaTime)) videoEl.requestVideoFrameCallback(frame); };
+          videoEl.requestVideoFrameCallback(frame);
+        }
+      }).catch((err) => {
+        try { rec.stop(); } catch (_) {}
+        videoEl.pause();
+        stream.getTracks().forEach((t) => t.stop());
+        throw err;
+      });
+      if (rec.state === 'recording') rec.pause();
+      videoEl.pause();
+      recordedMs += began ? performance.now() - began : (r.end - r.start) * 1000;
+      done += r.end - r.start;
+    }
+    rec.stop();
+    await stopped;
+    stream.getTracks().forEach((t) => t.stop());
+    state.playhead = ranges[ranges.length - 1].end;
+    updateTransport();
+    draw();
+    const ext = mime.startsWith('video/mp4') ? '.mp4' : '.webm';
+    let blob = new Blob(chunks, { type: mime.split(';')[0] });
+    // Nothing recorded (e.g. the tab was hidden and the browser held the
+    // video back): never save an empty file.
+    if (blob.size < 1024) throw { code: 'empty_recording' };
+    // MediaRecorder leaves the WebM length empty; write it in so players
+    // show the length and can seek.
+    if (ext === '.webm' && window.ysFixWebmDuration) {
+      try { blob = await window.ysFixWebmDuration(blob, recordedMs, { logger: false }); } catch (_) {}
+    }
+    return { blob, ext };
+  }
+
+  /** The chosen format for these ranges → { blob, ext }. */
+  async function render(ranges, onProgress) {
+    if (state.format === 'video') return recordVideoSegments(ranges, onProgress);
+    const audio = ranges.length === 1 ? sliceChannels(ranges[0]) : joinChannels(ranges);
+    if (state.format === 'mp3') return { blob: await encodeMp3(audio, onProgress), ext: '.mp3' };
+    return { blob: encodeWav(audio), ext: '.wav' };
+  }
+
+  /**
+   * Which files also get a transcript (.txt)? One file: a yes / no
+   * question. Several: every file listed with a checkbox to pick from.
+   * [items] = [{ name, color?, length? }]. Resolves the picked names, or
+   * null when cancelled.
+   */
+  function askTranscript(items) {
+    const box = $('ask'), list = $('askList'), many = items.length > 1;
+    list.textContent = '';
+    $('askInner').classList.toggle('sheet', many);
+    $('askTools').hidden = !many;
+    list.hidden = !many;
+    $('askNo').hidden = many;
+    if (many) {
+      $('askTitle').innerHTML = '<b>Hangilerinin yazılı hali de olsun?</b> İşaretlediklerin metne çevrilip aynı isimle .txt olarak yanına eklenir (bu Mac\'teki yardımcı yapar).';
+      for (const it of items) {
+        const li = document.createElement('li');
+        const label = document.createElement('label');
+        if (it.color) label.style.setProperty('--c', 'var(' + it.color + ')');
+        const box2 = document.createElement('input');
+        box2.type = 'checkbox';
+        box2.value = it.name;
+        const name = document.createElement('span');
+        name.className = 'aname';
+        name.textContent = it.name;
+        label.append(box2, name);
+        if (it.length != null) {
+          const len = document.createElement('span');
+          len.className = 'len';
+          len.textContent = fmt(it.length);
+          label.append(len);
+        }
+        li.append(label);
+        list.append(li);
+      }
+    } else {
+      $('askTitle').innerHTML = '<b>Yazılı halini de istiyor musun?</b> Konuşma metne çevrilip aynı isimle .txt olarak yanına eklenir (bu Mac\'teki yardımcı yapar).';
+      $('askYes').textContent = 'Evet, metin de';
+      $('askNo').textContent = 'Hayır, sadece ses';
+    }
+    const picked = () => [...list.querySelectorAll('input:checked')].map((i) => i.value);
+    const label = () => {
+      const n = picked().length;
+      $('askYes').textContent = n ? 'İndir (' + n + ' metinli)' : 'İndir (metinsiz)';
+    };
+    if (many) {
+      label();
+      list.onchange = label;
+      $('askAll').onclick = () => { list.querySelectorAll('input').forEach((i) => { i.checked = true; }); label(); };
+      $('askNone').onclick = () => { list.querySelectorAll('input').forEach((i) => { i.checked = false; }); label(); };
+    }
+    return new Promise((resolve) => {
+      const done = (v) => {
+        box.hidden = true;
+        document.removeEventListener('keydown', onKey);
+        $('askYes').onclick = $('askNo').onclick = $('askCancel').onclick = null;
+        resolve(v);
+      };
+      const onKey = (e) => { if (e.key === 'Escape') done(null); };
+      $('askYes').onclick = () => done(many ? picked() : [items[0].name]);
+      $('askNo').onclick = () => done([]);
+      $('askCancel').onclick = () => done(null);
+      document.addEventListener('keydown', onKey);
+      box.hidden = false;
+      (many ? $('askAll') : $('askYes')).focus();
+    });
+  }
+
+  /**
+   * Shared download flow: ask about the text, make the files with [build]
+   * (→ [{ name, blob }]), zip them with our marker comment and offer the zip.
+   */
+  async function runDownload(button, zipName, build, items) {
+    if (state.busy) return;
+    const wanted = await askTranscript(items);
+    if (wanted === null) return;
+    const dl = await downloadsPromise;
+    if (!dl) {
+      toast('Bu görünümde indirme kullanılamıyor.', true);
+      return;
+    }
+    if (typeof JSZip === 'undefined' || (state.format === 'mp3' && typeof lamejs === 'undefined')) {
+      toast('Kodlayıcı yüklenemedi. Sayfayı yenileyip tekrar dene.', true);
+      return;
+    }
+    state.busy = true;
+    const label = button.textContent;
+    button.disabled = true;
+    try {
+      const files = await build((text) => { button.textContent = text; });
+      const zip = new JSZip();
+      for (const f of files) zip.file(f.name, f.blob);
+      button.textContent = 'Paketleniyor…';
+      // The archive comment marks our zips, so the Mac helper
+      // (~/Library/Scripts/ses-bolucu-unzip.sh) unpacks only these.
+      // "ses-bolucu txt" = a transcript for every file; otherwise one
+      // "txt: <file>" line per file that should get one.
+      const withText = files.filter((f) => wanted.includes(f.base));
+      const comment = withText.length === 0 ? 'ses-bolucu'
+        : withText.length === files.length ? 'ses-bolucu txt'
+        : ['ses-bolucu'].concat(withText.map((f) => 'txt: ' + f.name)).join('\n');
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE', comment });
+      const filename = zipName(files) + '.zip';
+      button.textContent = label;
+      await dl.save({ filename, data: zipBlob });
+      toast(withText.length
+        ? filename + ' kaydedildi. ' + withText.length + ' dosyanın metni, bu Mac\'teki yardımcı tarafından aynı isimle .txt olarak eklenecek.'
+        : filename + ' kaydedildi.');
+    } catch (err) {
+      const code = err && err.code;
+      if (code === 'declined') toast('İndirme iptal edildi.');
+      else if (code === 'stalled') toast('Video ' + fmt(err.at || 0) + '’de ilerlemeyi bıraktı, indirme yarıda kesildi. Tekrar dene; kayıt bitene kadar bu sekmeyi önde ve açık tut.', true);
+      else if (code === 'empty_recording') toast('“' + (err.part || 'Video') + '” kaydedilemedi (boş çıktı), indirme yapılmadı. Tekrar dene; kayıt bitene kadar bu sekmeyi önde ve açık tut.', true);
+      else if (code === 'no_video_cut') toast('Bu tarayıcı videoyu kesemiyor; Chrome ya da Edge ile aç. Sesini MP3 olarak alabilirsin.', true);
+      else if (code === 'rate_limited') toast('Başka bir indirme onayı açık. Onu kapatıp tekrar dene.', true);
+      else if (code === 'rejected_extension' || code === 'extension_not_enabled') toast('Bu görünüm .zip kaydetmeye izin vermiyor.', true);
+      else toast('İndirme yapılamadı' + (code ? ' (' + code + ')' : '') + '.', true);
+    } finally {
+      button.textContent = label;
+      button.disabled = false;
+      state.busy = false;
+    }
+  }
+
+  /** Each part as its own file. */
+  function downloadParts(list, button) {
+    if (list.length === 0) return;
+    // File names first (duplicates get -2, -3), so the sheet can list them.
+    const used = new Map();
+    const bases = list.map((p) => {
+      let base = safeName(p.name) || ('parca-' + (state.parts.indexOf(p) + 1));
+      const seen = used.get(base.toLowerCase()) || 0;
+      used.set(base.toLowerCase(), seen + 1);
+      return seen ? base + '-' + (seen + 1) : base;
+    });
+    const items = list.map((p, k) => ({ name: bases[k], color: p.color, length: p.end - p.start }));
+    return runDownload(button, (files) => (files.length === 1 ? files[0].base : state.baseName + '-parcalar'), async (show) => {
+      const files = [];
+      for (let k = 0; k < list.length; k++) {
+        const p = list[k];
+        const base = bases[k];
+        const prefix = list.length > 1 ? (k + 1) + '/' + list.length + ' · ' : '';
+        show(prefix + 'Hazırlanıyor…');
+        let blob, ext;
+        try {
+          ({ blob, ext } = await render([p], (f) => show(prefix + Math.round(f * 100) + '%')));
+        } catch (err) {
+          if (err && err.code === 'empty_recording') err.part = base;
+          throw err;
+        }
+        files.push({ name: base + ext, base, blob });
+      }
+      return files;
+    }, items);
+  }
+  $('dlAll').addEventListener('click', () => downloadParts(activeParts(), $('dlAll')));
+
+  /** Several ranges, back to back, as one file named [name]. */
+  function downloadJoined(ranges, name, button) {
+    return runDownload(button, () => name, async (show) => {
+      show('Hazırlanıyor…');
+      const { blob, ext } = await render(ranges, (f) => show(Math.round(f * 100) + '%'));
+      return [{ name: name + ext, base: name, blob }];
+    }, [{ name, length: rangesLength(ranges) }]);
+  }
+
+  // Sheet for "Birleştir" (with ordering) and "Ana dosyadan çıkar".
+  let combineMode = null;
+  let combineOrder = [];
+  function openCombine(mode) {
+    if (state.busy) return;
+    if (mode === 'join' && activeParts().length < 2) {
+      toast('Birleştirmek için en az iki parça gerekiyor (çıkarılmış olanlar sayılmaz).', true);
+      return;
+    }
+    if (mode === 'cut' && !state.parts.some((p) => p.excluded)) {
+      toast('Önce çıkarmak istediğin kısmı parça olarak seçip "Çıkar"a bas.', true);
+      return;
+    }
+    stop();
+    combineMode = mode;
+    combineOrder = activeParts().map((p) => p.id);
+    $('combineTitle').textContent = mode === 'join' ? 'Parçaları birleştir' : 'Kesilmiş hâlini indir';
+    $('combineGo').textContent = mode === 'join' ? 'Birleştir ve indir' : 'İndir';
+    $('combineName').value = state.baseName + (mode === 'join' ? '-birlesik' : '-kesilmis');
+    renderCombine();
+    $('combine').hidden = false;
+    $('combineGo').focus();
+  }
+  function closeCombine() {
+    $('combine').hidden = true;
+    combineMode = null;
+  }
+  function partById(id) { return state.parts.find((p) => p.id === id); }
+  function renderCombine() {
+    const list = $('combineList');
+    list.textContent = '';
+    const rows = combineMode === 'join'
+      ? combineOrder.map(partById).filter(Boolean)
+      : state.parts.filter((p) => p.excluded).sort((a, b) => a.start - b.start);
+    if (combineMode === 'join') {
+      $('combineNote').textContent = 'Sırayı ↑ ↓ ile ayarla: parçalar bu sırayla arka arkaya eklenecek. Toplam ' +
+        fmt(rangesLength(rows)) + '.';
+    } else {
+      $('combineNote').textContent = 'Çıkardığın ' + rows.length + ' kısım olmadan dosyanın tamamı tek dosya olarak inecek. Süre ' +
+        fmt(rangesLength(keptRanges())) + ' (önce ' + fmt(duration()) + ').';
+    }
+    rows.forEach((p, i) => {
+      const li = document.createElement('li');
+      li.style.setProperty('--c', 'var(' + p.color + ')');
+      const num = document.createElement('span');
+      num.className = 'num';
+      num.textContent = String(i + 1).padStart(2, '0');
+      const label = document.createElement('span');
+      label.className = 'oname';
+      label.textContent = (p.name || '').trim() || 'adsız';
+      const time = document.createElement('span');
+      time.className = 'len';
+      time.textContent = fmt(p.start) + ' – ' + fmt(p.end);
+      li.append(num, label, time);
+      if (combineMode === 'join') {
+        const move = (d) => {
+          const j = i + d;
+          [combineOrder[i], combineOrder[j]] = [combineOrder[j], combineOrder[i]];
+          renderCombine();
+          const again = $('combineList').children[j];
+          if (again) again.querySelector(d < 0 ? '.up' : '.down').focus();
+        };
+        const up = document.createElement('button');
+        up.type = 'button';
+        up.className = 'icon up';
+        up.textContent = '↑';
+        up.setAttribute('aria-label', 'Yukarı taşı');
+        up.disabled = i === 0;
+        up.addEventListener('click', () => move(-1));
+        const down = document.createElement('button');
+        down.type = 'button';
+        down.className = 'icon down';
+        down.textContent = '↓';
+        down.setAttribute('aria-label', 'Aşağı taşı');
+        down.disabled = i === rows.length - 1;
+        down.addEventListener('click', () => move(1));
+        li.append(up, down);
+      }
+      list.appendChild(li);
+    });
+  }
+  $('joinBtn').addEventListener('click', () => openCombine('join'));
+  $('cutBtn').addEventListener('click', () => openCombine('cut'));
+  $('combineCancel').addEventListener('click', closeCombine);
+  $('combine').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCombine(); });
+  $('combineGo').addEventListener('click', () => {
+    const mode = combineMode;
+    const ranges = mode === 'join'
+      ? combineOrder.map(partById).filter(Boolean).map((p) => ({ start: p.start, end: p.end }))
+      : keptRanges();
+    if (ranges.length === 0) {
+      toast('Geriye bir şey kalmıyor: parçalar dosyanın tamamını kaplıyor.', true);
+      return;
+    }
+    const name = safeName($('combineName').value) || (state.baseName + (mode === 'join' ? '-birlesik' : '-kesilmis'));
+    closeCombine();
+    downloadJoined(ranges, name, mode === 'join' ? $('joinBtn') : $('cutBtn'));
+  });
+
+  function pickFormat(fmt) {
+    state.format = fmt;
+    document.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-checked', String(x.dataset.fmt === fmt)));
+  }
+  /** "Video" is offered (and picked) only while a video is loaded. */
+  function setFormatChoices(isVideo) {
+    document.querySelector('.seg button[data-fmt="video"]').hidden = !isVideo;
+    if (isVideo) pickFormat('video');
+    else if (state.format === 'video') pickFormat('mp3');
+  }
+  document.querySelectorAll('.seg button').forEach((b) => {
+    b.addEventListener('click', () => {
+      pickFormat(b.dataset.fmt);
+      if (b.dataset.fmt !== 'video') {
+        try { localStorage.setItem('ses-bolucu-format', state.format); } catch (_) {}
+      }
+    });
+  });
+  try {
+    const f = localStorage.getItem('ses-bolucu-format');
+    if (f === 'wav' || f === 'mp3') pickFormat(f);
+  } catch (_) {}
+
+  let toastTimer = null;
+  function toast(msg, err) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.toggle('err', !!err);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.textContent = ''; }, 6000);
+  }
+
+  // ---------- start ----------
+  state.buffer = makeSample();
+  setPlayerSource(encodeWav(sliceChannels({ start: 0, end: state.buffer.duration })));
+  addPart(5, 14.5, 'happiness', true);
+  addPart(31, 42, 'wealth', true);
+  updateTransport();
+  new ResizeObserver(() => draw()).observe(canvas);
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+  }
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  draw();
+})();
+</script>
+
+</body>
+</html>
